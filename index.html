@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MSD BIOS</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23000000'/%3E%3Crect x='3' y='3' width='10' height='10' fill='none' stroke='%233232ff' stroke-width='2'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --blue:#3232ff;                 /* синий */
+    --dim:rgba(50,50,255,.60);      /* он же, приглушённый */
+    --line:rgba(50,50,255,.40);
+    --faint:rgba(50,50,255,.06);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    background:#000;                /* чёрный */
+    color:var(--blue);
+    font-family:"Courier New",Consolas,"Lucida Console",monospace;
+    font-size:clamp(13px, .55vw + 11px, 17px);
+    line-height:1.5;
+    overflow:hidden;
+    -webkit-tap-highlight-color:transparent;
+  }
+  /* скан-линии как у ЭЛТ-монитора */
+  body::after{
+    content:"";position:fixed;inset:0;z-index:50;pointer-events:none;
+    background:repeating-linear-gradient(180deg,var(--faint) 0 1px,transparent 1px 3px);
+  }
+
+  /* ================= ЗАГРУЗКА КАК У ПК ================= */
+  #boot{
+    position:fixed;inset:0;
+    padding:26px 30px;
+    white-space:pre-wrap;
+    overflow:hidden;
+    text-shadow:0 0 7px rgba(50,50,255,.55);
+  }
+  #boot .ln{min-height:1.5em}
+
+  /* ================= ЭКРАН BIOS ================= */
+  #setup{display:none;height:100vh;height:100dvh;flex-direction:column;overflow:auto}
+  #setup.on{display:flex;animation:on .22s steps(2) 2}
+  @keyframes on{50%{opacity:.35}}
+
+  .bar{
+    background:var(--blue);color:#000;
+    font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+    padding:.45em 1.1em;
+    display:flex;align-items:center;gap:1.4em;flex-wrap:wrap;
+  }
+  .bar .sp{margin-left:auto}
+
+  .sysline{
+    display:flex;flex-wrap:wrap;gap:.2em 2em;
+    padding:.85em 1.4em;
+    border-bottom:1px solid var(--line);
+    color:var(--dim);
+    font-size:.92em;
+  }
+
+  .mid{
+    flex:1;
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    gap:14px;padding:20px;
+  }
+  .cap{
+    letter-spacing:.4em;text-transform:uppercase;
+    color:var(--dim);font-size:.82em;
+    margin-bottom:.6em;
+  }
+  .bios-btn{
+    all:unset;display:block;
+    width:min(430px,86vw);
+    text-align:center;
+    border:1px solid var(--blue);
+    background:#000;color:var(--blue);
+    padding:.62em 1em;
+    letter-spacing:.24em;text-transform:uppercase;
+    cursor:pointer;
+    text-shadow:0 0 7px rgba(50,50,255,.5);
+  }
+  .bios-btn:hover,.bios-btn:focus-visible{
+    background:var(--blue);color:#000;
+    text-shadow:none;outline:none;
+  }
+
+  .cursor,.blink{animation:blink 1.05s steps(1) infinite}
+  @keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
+</style>
+</head>
+<body>
+
+<!-- ===== ЗАГРУЗКА ===== -->
+<div id="boot"></div>
+
+<!-- ===== ЭКРАН BIOS ===== -->
+<div id="setup">
+  <div class="bar">
+    <span>MSD BIOS SETUP UTILITY</span>
+    <span class="sp">v1.00.24</span>
+  </div>
+
+  <div class="sysline">
+    <span>ЦП: MSD-Core 1 @ 200 МГц</span>
+    <span>Память: 16384K OK</span>
+    <span>Накопитель: MSD-HDD 1.0G</span>
+    <span id="clock">&nbsp;</span>
+  </div>
+
+  <div class="mid">
+    <div class="cap">Главное меню</div>
+    <button class="bios-btn" type="button">Видео</button>
+    <button class="bios-btn" type="button">Обо мне</button>
+    <button class="bios-btn" type="button">Контакты</button>
+    <button class="bios-btn" type="button">Выход</button>
+  </div>
+
+  <div class="bar">
+    <span>↑↓ Выбор</span>
+    <span>Enter Открыть</span>
+    <span>F10 Сохранить и выйти</span>
+    <span>Esc Выход</span>
+    <span class="sp">© MSD 2026 <span class="cursor">█</span></span>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  var bootEl  = document.getElementById('boot');
+  var setupEl = document.getElementById('setup');
+
+  var skipped = false, finished = false;
+
+  /* клик или любая клавиша — пропустить загрузку */
+  window.addEventListener('keydown',    function(){ skipped = true; });
+  window.addEventListener('click',      function(){ skipped = true; });
+  window.addEventListener('touchstart', function(){ skipped = true; });
+
+  function sleep(ms){
+    return new Promise(function(res){
+      var iv;
+      var t = setTimeout(function(){ clearInterval(iv); res(); }, ms);
+      iv = setInterval(function(){ if(skipped){ clearTimeout(t); clearInterval(iv); res(); } }, 25);
+    });
+  }
+  function addLine(text){
+    var d = document.createElement('div');
+    d.className = 'ln';
+    d.textContent = text || '';
+    bootEl.appendChild(d);
+    return d;
+  }
+
+  function finish(){
+    if (finished) return;
+    finished = true;
+    bootEl.style.display = 'none';
+    setupEl.classList.add('on');
+    startClock();
+  }
+
+  function startClock(){
+    var el = document.getElementById('clock');
+    function p(n){ return (n < 10 ? '0' : '') + n; }
+    function tick(){
+      var d = new Date();
+      el.textContent = 'Дата: ' + p(d.getDate()) + '.' + p(d.getMonth()+1) + '.' + d.getFullYear()
+                     + '   Время: ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+    }
+    tick();
+    setInterval(tick, 1000);
+  }
+
+  function memTest(){
+    var line = addLine('Memory Test: 0K');
+    var dur = 850, t0 = performance.now();
+    return new Promise(function(res){
+      (function tick(now){
+        var p = Math.min(1, (now - t0) / dur);
+        line.textContent = 'Memory Test: ' + Math.round(16384 * p) + 'K';
+        if (skipped || p >= 1) { line.textContent = 'Memory Test: 16384K OK'; res(); }
+        else requestAnimationFrame(tick);
+      })(t0);
+    });
+  }
+
+  (async function runBoot(){
+    addLine('MSD BIOS v1.00   (C) 2026 MSD Systems, Inc.');          await sleep(300);  if(skipped) return finish();
+    addLine('');                                                     await sleep(120);  if(skipped) return finish();
+    addLine('CPU        : MSD-Core 1 @ 200 МГц');                    await sleep(250);  if(skipped) return finish();
+    await memTest();
+    await sleep(200); if(skipped) return finish();
+    addLine('');                                                     await sleep(120);  if(skipped) return finish();
+    addLine('Detecting Primary Master   ... MSD-HDD 1.0G');          await sleep(200);  if(skipped) return finish();
+    addLine('Detecting Primary Slave    ... None');                  await sleep(160);  if(skipped) return finish();
+    addLine('Detecting Secondary Master ... None');                  await sleep(160);  if(skipped) return finish();
+    addLine('Detecting Secondary Slave  ... None');                  await sleep(190);  if(skipped) return finish();
+    addLine('Initializing USB Controller ... OK');                   await sleep(180);  if(skipped) return finish();
+    addLine('Keyboard ................... Detected');                await sleep(230);  if(skipped) return finish();
+    addLine('');
+    addLine('Press DEL to enter SETUP').classList.add('blink');      await sleep(1300); if(skipped) return finish();
+    addLine('Entering SETUP ...');                                   await sleep(400);
+    finish();
+  })();
+})();
+</script>
+</body>
+</html>
